@@ -1,154 +1,189 @@
-import React, { useEffect, useState } from 'react'
-import { StyleSheet, Image, View, Text, TextInput, TouchableOpacity } from 'react-native'
-import MapView, { Marker, Callout } from 'react-native-maps'
-import { requestPermissionsAsync, getCurrentPositionAsync } from 'expo-location'
-import { MaterialIcons } from '@expo/vector-icons'
+import React, {useState, useEffect} from 'react';
+import io from 'socket.io-client';
+import AsyncStorage from '@react-native-community/async-storage';
+import {SafeAreaView, View, Text, Image, StyleSheet, TouchableOpacity} from 'react-native';
 
-import api from '../services/api'
-import { connect, disconnect, subscribeToNewDevs } from '../services/socket'
+import api from './services/api';
 
-import PointMap from '../components/PointMap'
+import logo from '../assets/logo.png';
+import like from '../assets/like.png';
+import dislike from '../assets/dislike.png';
 
-function Main({ navigation }) {
-
-  const [currentRegion, setCurrentRegion] = useState(null)
-  const [devs, setDevs] = useState([])
-  const [techs, setTechs] = useState('')
+export default function Main({navigation}) {
+  const id = navigation.getParam('user');
+  const [users, setUsers] = useState([]);
+  const [matchDev, setMatchDev] = useState();
 
   useEffect(() => {
-    async function loadInitialPosition() {
-      const { granted } = await requestPermissionsAsync()
+    async function loadUsers(){
+      const response = await api.get('/devs', {
+        headers: {
+          user: id,
+        }
+      })
 
-      if (granted) {
-        const { coords } = await getCurrentPositionAsync({ enableHighAccuracy: true })
-
-        const { latitude, longitude } = coords
-
-        setCurrentRegion({
-          latitude,
-          longitude,
-          latitudeDelta: 0.5,
-          longitudeDelta: 0.5,
-        })
-      }
+      setUsers(response.data);
     }
 
-    loadInitialPosition()
-  }, [])
+    loadUsers();
+  }, [id]);
 
   useEffect(() => {
-    subscribeToNewDevs(dev => setDevs([...devs, dev]))
-  }, [devs])
+    const socket = io('http://201.46.18.170:3333', {
+      query: {user: id}
+    });
 
-  function setupWebSocket() {
-    disconnect()
+    socket.on('match', dev => {
+      setMatchDev(dev);
+    })
+  }, [id]);
 
-    const { latitude, longitude } = currentRegion
+  async function handleLike(id) {
+    const [user, ...rest] = users;
 
-    connect(
-      latitude,
-      longitude,
-      techs
-    )
-
-
-  }
-
-  async function loadDevs() {
-
-    const { latitude, longitude } = currentRegion
-
-    const response = await api.get('/search', {
-      params: {
-        latitude,
-        longitude,
-        techs
-      }
+    await api.post(`devs/${user._id}/likes`, null, {
+      headers: {user: id},
     })
 
-    setDevs(response.data.devs)
+    setUsers(rest}
 
-    setupWebSocket()
+  async function handleDislike(id) {
+    const [user, ...rest] = users;
+
+    await api.post(`devs/${user._id}/dislikes`, null, {
+      headers: {user: id},
+    })
+
+    setUsers(rest)
   }
 
-  function handleRegionChanged(region) {
-    setCurrentRegion(region)
-  }
+  async function handleLogout() {
+    await AsyncStorage.clear();
 
-  if (!currentRegion) {
-    return null
+    navigation.navigate('Login');
   }
 
   return (
-    <>
-      <MapView
-        onRegionChangeComplete={handleRegionChanged}
-        style={styles.map}
-        initialRegion={currentRegion}
-      >
-        {devs.map((dev, i) => (
-          <PointMap key={i} dev={dev} navigation={navigation}/>
-        ))}
-      </MapView>
+    <SafeAreaView style={styles.container}>
+      <TouchableOpacity onPress={handleLogout}>
+        <Image style={styles.logo} source={logo}/>
+      </TouchableOpacity>
 
-      <View style={styles.searchForm}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder='Digite as tecnologias'
-          placeholderTextColor='#999'
-          autoCapitalize='words'
-          autoCorrect={false} 
-          value={techs} 
-          onChangeText={setTechs}
-        />
-        <TouchableOpacity
-          style={styles.searchLoadButton}
-          onPress={loadDevs}
-        >
-          <MaterialIcons name='my-location' size={20} color='#fff' />
-        </TouchableOpacity>
+      <View style={styles.cardsContainer}>
+        {users.length == 0
+          ? <Text style={styles.empty}>Acabou :(</Text>
+          : (
+            users.map((user, index) => (
+              <View key={user._id} style={[styles.card], {zIndex: users.length - index}}>
+                <Image style={styles.avatar} source={{uri: 'user.avatar'}}/>
+                <View style={styles.footer}>
+                  <Text style={styles.name}>{user.name}</Text>
+                  <Text style={styles.bio} numberOfLines={3}>{user.bio}</Text>
+                </View>
+              </View>
+            ))
+          )
+        }
       </View>
-    </>
-  )
+
+      (users.length > 0 &&
+        <View style={styles.buttonsContainer}>
+          <TouchableOpacity style={styles.button} onPress={handleDislike}>
+            <Image source={dislike}>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={handleLike}>
+            <Image source={like}>
+          </TouchableOpacity>
+        </View>
+      )
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-  map: {
-    flex: 1
-  },
-  searchForm: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    right: 20,
-    zIndex: 5,
-    flexDirection: 'row'
-  },
-  searchInput: {
+  container:{
     flex: 1,
-    height: 50,
-    backgroundColor: '#fff',
-    color: '#333',
-    borderRadius: 25,
-    paddingHorizontal: 20,
-    fontSize: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: {
-      width: 4,
-      height: 4
-    },
-    elevation: 2
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  searchLoadButton: {
+
+  logo:{
+    marginTop: 30,
+  },
+
+  empty:{
+    alignSelf: 'center',
+    color: '#999',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+
+  cardsContainer:{
+    flex: 1,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    maxHeight: 500,
+  },
+
+  card:{
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    margin: 30,
+    overflow: 'hidden',
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+
+  avatar:{
+    flex: 1,
+    height: 300,
+  },
+
+  footer:{
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingvertical: 15,
+  },
+
+  name:{
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+
+  name:{
+    fontSize: 14,
+    color: '#999',
+    lineHeight: 18,
+    marginTop: 5,
+  },
+
+  buttonsContainer:{
+    flex: 'row',
+    marginBottom: 30,
+  },
+
+  button:{
     width: 50,
     height: 50,
-    backgroundColor: '#8e4dff',
     borderRadius: 25,
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 15
-  }
-})
+    marginHorizontal: 20,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOfset: {
+      width: 0,
+      height: 2,
+    },
 
-export default Main
+  },
+});

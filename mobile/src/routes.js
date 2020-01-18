@@ -1,33 +1,11 @@
-import { createAppContainer } from 'react-navigation'
-import { createStackNavigator } from 'react-navigation-stack'
+import {createAppContainer, createSwitchNavigator} from 'react-navigation';
 
-import Profile from './pages/Profile'
-import Main from './pages/Main'
+import Login from './pages/Login';
+import Main from './pages/Main';
 
-const Routes = createAppContainer(
-  createStackNavigator({
-    Main: {
-      screen: Main,
-      navigationOptions: {
-        title: 'devRadar'
-      }
-    },
-    Profile: {
-      screen: Profile,
-      navigationOptions: {
-        title: 'Perfil no Github'
-      }
-    },
-  }, {
-    defaultNavigationOptions: {
-      headerTintColor: '#fff',
-      headerBackTitleVisible: false,
-      headerStyle: {
-        backgroundColor: '#7d40e7',
-
-      }
-    }
+export default createAppContainer(
+  createSwitchNavigator({
+    Login,
+    Main,
   })
-)
-
-export default Routes
+);
