@@ -1,53 +1,43 @@
-const axios = require('axios')
-const Dev = require('../models/Dev')
-const parseStringAsArray = require('../utils/parseStringAsArray')
-const { findConnections, sendMessage } = require('../websocket')
+const axios = require('axios');
+const Dev = require('../models/Dev');
 
 module.exports = {
-  async index(request, response) {
-    const devs = await Dev.find()
+  async index(req, res){
+    const {user} = req.headers;
 
-    return response.json(devs)
+    const loggedUser = await Dev.findById(user);
+
+    const users = await Dev.find({
+      $and: [
+        {_id: {$ne: user}},
+        {_id: {$nin: loggedUser.likes}},
+        {_id: {$nin: loggedUser .dislikes}},
+      ],
+    })
+
+    return res.json(users)
   },
 
-  async store(request, response) {
-    const { github_username, techs, latitude, longitude } = request.body
+  async store(req, res){
+    const {username} = req.body;
 
-    let dev = await Dev.findOne({ github_username })
+    const userExists = await Dev.findOne({user: username});
 
-    if (!dev) {
-      const apiResponse = await axios.get(`https://api.github.com/users/${github_username}`)
-
-      const { name = login, avatar_url, bio } = apiResponse.data
-
-      const techsArray = parseStringAsArray(techs)
-
-      const location = {
-        type: 'Point',
-        coordinates: [longitude, latitude]
-      }
-
-      dev = await Dev.create({
-        github_username,
-        name,
-        avatar_url,
-        bio,
-        techs: techsArray,
-        location
-      })
-
-      // filtrar as conexoes que estao no max 10km de distancia 
-      // e que o novo dev tenha pelo menos um das techs filtradas
-
-      const sendSocketMessageTo = findConnections(
-        { latitude, longitude },
-        techsArray
-      )
-
-      sendMessage(sendSocketMessageTo, 'newDev', dev)
+    if (userExists) {
+      return res.json(userExists);
     }
 
+    const response = await axios.get(`https://api.github.com/users/${username}`);
 
-    return response.json(dev)
+    const {name, bio, avatar_url: avatar } = response.data;
+
+    const dev = await Dev.create({
+      name,
+      user: username,
+      bio,
+      avatar
+    });
+
+    return res.json(dev);
   }
-}
+};
